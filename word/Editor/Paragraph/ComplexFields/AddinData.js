@@ -36,6 +36,8 @@
 		this.FieldId = undefined;
 		this.Value   = undefined;
 		this.Content = undefined;
+		// Hearth (fork): the result as formatted paragraphs (SetParagraphs).
+		this.Paragraphs = undefined;
 	}
 	CAddinFieldData.prototype.SetFieldId = function(fieldId)
 	{
@@ -60,6 +62,24 @@
 	CAddinFieldData.prototype.GetContent = function()
 	{
 		return this.Content;
+	};
+	/**
+	 * Hearth (fork): the field's result as paragraphs of formatted runs, in
+	 * place of the plain Content: [{"Runs": [{"Text", "Bold", "Italic",
+	 * "Underline", "SmallCaps", "VertAlign": "superscript" | "subscript" |
+	 * "baseline"}], "IndLeft", "IndFirstLine" (twips)}]. A citation's
+	 * superscript number and a bibliography's entries (one paragraph each,
+	 * with italic journal names and a hanging indent) are written in one
+	 * step, so neither is lost or broken when a field is updated.
+	 * @param {Array} paragraphs
+	 */
+	CAddinFieldData.prototype.SetParagraphs = function(paragraphs)
+	{
+		this.Paragraphs = Array.isArray(paragraphs) ? paragraphs : undefined;
+	};
+	CAddinFieldData.prototype.GetParagraphs = function()
+	{
+		return this.Paragraphs;
 	};
 	CAddinFieldData.prototype.ToJson = function()
 	{
@@ -89,6 +109,9 @@
 			newData.SetContent(obj.Content);
 		else if (undefined !== obj["Content"])
 			newData.SetContent(obj["Content"]);
+		
+		if (undefined !== obj["Paragraphs"])
+			newData.SetParagraphs(obj["Paragraphs"]);
 		
 		return newData;
 	};

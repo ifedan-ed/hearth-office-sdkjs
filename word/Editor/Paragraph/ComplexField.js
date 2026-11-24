@@ -2038,6 +2038,9 @@ CComplexField.prototype.ChangeInstruction = function(sNewInstruction)
 	var oRun      = this.BeginChar.GetRun();
 	var nInRunPos = oRun.GetElementPosition(this.BeginChar) + 1;
 	let items     = oRun.AddInstrText(sNewInstruction, nInRunPos);
+	// Hearth (fork): the instruction in runs of its own, at most 255
+	// characters each, as Word writes it.
+	this.private_SplitInstructionRuns();
 
 	this.Instruction        = null;
 	this.InstructionLine    = sNewInstruction;
@@ -2045,6 +2048,44 @@ CComplexField.prototype.ChangeInstruction = function(sNewInstruction)
 	this.InstructionCF      = [];
 	this.InstructionItems   = items;
 	this.private_UpdateInstruction();
+};
+/**
+ * Hearth (fork): moves the instruction that follows the begin character
+ * into runs of its own of at most AscWord.FIELD_INSTRUCTION_RUN characters
+ * (Word's own limit), splitting runs in place (through Split2, so the
+ * change is recorded for undo and co-editing).
+ */
+CComplexField.prototype.private_SplitInstructionRuns = function()
+{
+	let run    = this.BeginChar.GetRun();
+	let parent = run ? run.GetParent() : null;
+	if (!parent || !parent.Content)
+		return;
+	
+	let runPos = parent.Content.indexOf(run);
+	if (-1 === runPos)
+		return;
+	
+	let at = run.GetElementPosition(this.BeginChar) + 1;
+	while (run && at < run.Content.length && para_InstrText === run.Content[at].Type)
+	{
+		if (at > 0)
+		{
+			// The instruction starts a run of its own.
+			run = run.Split2(at, parent, runPos);
+			runPos++;
+			at = 0;
+			continue;
+		}
+		let count = 0;
+		while (count < run.Content.length && para_InstrText === run.Content[count].Type)
+			++count;
+		let cut = Math.min(count, AscWord.FIELD_INSTRUCTION_RUN);
+		if (cut >= run.Content.length)
+			break;
+		run = run.Split2(cut, parent, runPos);
+		runPos++;
+	}
 };
 CComplexField.prototype.CheckType = function(type)
 {
@@ -2260,4 +2301,36 @@ window['AscCommonWord'].CComplexField = CComplexField;
 window['AscWord'] = window['AscWord'] || {};
 window['AscWord'].getRefInstruction = getRefInstruction;
 window['AscWord'].CComplexField = CComplexField;
+
+/**
+ * Hearth (fork): the longest run Word writes a field's instruction in
+ * (w:instrText); longer instructions go in several runs.
+ */
+window['AscWord'].FIELD_INSTRUCTION_RUN = 255;
+/**
+ * Hearth (fork): an instruction cut into pieces of at most
+ * FIELD_INSTRUCTION_RUN characters (code points, never inside a surrogate
+ * pair).
+ * @param {string} instruction
+ * @returns {string[]}
+ */
+window['AscWord'].SplitFieldInstruction = function(instruction)
+{
+	let parts = [];
+	let part  = "";
+	let count = 0;
+	for (let iterator = ("" + instruction).getUnicodeIterator(); iterator.check(); iterator.next())
+	{
+		if (count === window['AscWord'].FIELD_INSTRUCTION_RUN)
+		{
+			parts.push(part);
+			part  = "";
+			count = 0;
+		}
+		part += String.fromCodePoint(iterator.value());
+		++count;
+	}
+	parts.push(part);
+	return parts;
+};
 window['AscWord'].ComplexField = CComplexField;

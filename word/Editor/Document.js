@@ -23383,12 +23383,19 @@ CDocument.prototype.addFieldWithInstructionToParagraph = function(paragraph, ins
 	if (textPr)
 		run.SetPr(textPr);
 	
-	run = new AscWord.Run();
-	run.AddInstrText(instructionLine);
-	paragraph.Add(run);
-	
-	if (textPr)
-		run.SetPr(textPr);
+	// Hearth (fork): the instruction in runs of at most 255 characters, as
+	// Word writes it (a Zotero citation's instruction holds its whole JSON,
+	// often several KB), so a saved .docx has Word's own structure.
+	let instructionParts = AscWord.SplitFieldInstruction(instructionLine);
+	for (let index = 0; index < instructionParts.length; ++index)
+	{
+		run = new AscWord.Run();
+		run.AddInstrText(instructionParts[index]);
+		paragraph.Add(run);
+		
+		if (textPr)
+			run.SetPr(textPr);
+	}
 	
 	
 	run = new AscWord.Run();
@@ -23957,7 +23964,11 @@ CDocument.prototype.AddAddinField = function(data)
 	if (field)
 	{
 		field.SelectFieldValue();
-		this.AddText(innerText);
+		// Hearth (fork): formatted paragraphs when the data has them.
+		if (data.GetParagraphs())
+			this.private_AddAddinFieldResult(data.GetParagraphs(), textPr);
+		else
+			this.AddText(innerText);
 	}
 	
 	this.Recalculate();
@@ -24027,12 +24038,22 @@ CDocument.prototype.UpdateAddinFieldsByData = function(arrData)
 		if (value)
 			field.ChangeInstruction(" ADDIN " + value + " ");
 		
-		let content = data.GetContent();
-		if (content)
+		// Hearth (fork): the new result keeps the old one's text
+		// properties (a superscript citation stays superscript), and may be
+		// given as formatted paragraphs (a bibliography of several entries),
+		// written inside the field so its end mark stays where it is.
+		let content    = data.GetContent();
+		let paragraphs = data.GetParagraphs();
+		if (content || paragraphs)
 		{
 			field.SelectFieldValue();
+			let textPr = logicDocument.GetDirectTextPr();
+			textPr = textPr ? textPr.Copy() : null;
 			logicDocument.Remove();
-			logicDocument.AddText(content);
+			if (paragraphs)
+				logicDocument.private_AddAddinFieldResult(paragraphs, textPr);
+			else
+				logicDocument.private_AddAddinFieldRun({"Text" : content}, textPr);
 		}
 	});
 	
@@ -24042,6 +24063,82 @@ CDocument.prototype.UpdateAddinFieldsByData = function(arrData)
 	this.FinalizeAction();
 	
 	this.LoadDocumentState(docState);
+};
+/**
+ * Hearth (fork): writes an add-in field's result at the cursor (inside the
+ * emptied result) as paragraphs of formatted runs (CAddinFieldData's
+ * Paragraphs). Each run takes textPr (what was there) and its own bold,
+ * italic, underline, small capitals and vertical alignment. Paragraphs are
+ * started with AddNewParagraph, as Enter would, which keeps the field's end
+ * mark in the last one; pasting paragraphs into a result removed it.
+ * @param {Array} paragraphs
+ * @param {?CTextPr} textPr
+ */
+CDocument.prototype.private_AddAddinFieldResult = function(paragraphs, textPr)
+{
+	for (let index = 0, count = paragraphs.length; index < count; ++index)
+	{
+		let item = paragraphs[index] || {};
+		if (index > 0)
+			this.AddNewParagraph(false, true);
+		
+		let runs = Array.isArray(item["Runs"]) ? item["Runs"] : [];
+		for (let runIndex = 0; runIndex < runs.length; ++runIndex)
+			this.private_AddAddinFieldRun(runs[runIndex], textPr, true);
+		
+		let paragraph = this.GetCurrentParagraph(false, false);
+		if (paragraph && (undefined !== item["IndLeft"] || undefined !== item["IndFirstLine"]))
+		{
+			let twipsToMm = 25.4 / 1440;
+			let ind = {};
+			if (undefined !== item["IndLeft"])
+				ind.Left = (item["IndLeft"] | 0) * twipsToMm;
+			if (undefined !== item["IndFirstLine"])
+				ind.FirstLine = (item["IndFirstLine"] | 0) * twipsToMm;
+			paragraph.Set_Ind(ind, false);
+		}
+	}
+};
+/**
+ * Hearth (fork): one formatted run of an add-in field's result, at the
+ * cursor.
+ * @param {Object} item {"Text", "Bold", "Italic", "Underline", "SmallCaps", "VertAlign"}
+ * @param {?CTextPr} textPr
+ * @param {boolean} styled
+ */
+CDocument.prototype.private_AddAddinFieldRun = function(item, textPr, styled)
+{
+	let text = item && undefined !== item["Text"] ? "" + item["Text"] : "";
+	if (!text)
+		return;
+	
+	let paragraph = this.GetCurrentParagraph(false, false);
+	if (!paragraph)
+		return;
+	
+	// A styled run (from Paragraphs) says all of its own emphasis: what it
+	// leaves out is off, so a style change from superscript numbers to
+	// author and year leaves no superscript behind. A plain Content run
+	// keeps what the result had.
+	let pr = textPr ? textPr.Copy() : new CTextPr();
+	if (styled)
+	{
+		pr.Bold      = !!item["Bold"];
+		pr.Italic    = !!item["Italic"];
+		pr.Underline = !!item["Underline"];
+		pr.SmallCaps = !!item["SmallCaps"];
+		switch (item["VertAlign"])
+		{
+			case "superscript": pr.VertAlign = AscCommon.vertalign_SuperScript; break;
+			case "subscript": pr.VertAlign = AscCommon.vertalign_SubScript; break;
+			default: pr.VertAlign = AscCommon.vertalign_Baseline; break;
+		}
+	}
+	
+	let run = new AscWord.Run();
+	run.SetPr(pr);
+	run.AddText(text);
+	paragraph.Add(run);
 };
 /**
  * Select add-in field

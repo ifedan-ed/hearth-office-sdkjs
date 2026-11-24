@@ -775,6 +775,9 @@
 	 * @property {string} FieldId - Field identifier.
 	 * @property {string} Value - Field value.
 	 * @property {string} Content - Field text content.
+	 * @property {Array} [Paragraphs] - Hearth (fork): the field's result as paragraphs of formatted runs, in place of Content:
+	 * [{"Runs": [{"Text", "Bold", "Italic", "Underline", "SmallCaps", "VertAlign": "superscript" | "subscript" | "baseline"}],
+	 * "IndLeft", "IndFirstLine"}] (indents in twips). Read by AddAddinField and UpdateAddinFields.
 	 * @see office-js-api/Examples/Plugins/{Editor}/Enumeration/AddinFieldData.js
 	 */
 
