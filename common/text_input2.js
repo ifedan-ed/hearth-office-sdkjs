@@ -1006,6 +1006,15 @@
 				else
 					_style += "font-size:8px;";
 			}
+			// Hearth: on iOS Safari the input is 16px. Safari zooms the whole
+			// page when a field under 16px takes focus; the editor's own page
+			// stops that with maximum-scale=1, but an editor in a frame (a
+			// host such as Hearth, whose page keeps pinch zoom) is under the
+			// host's viewport, and the page zoomed as typing began. The input
+			// is transparent, so nothing on screen changes. Appended last, so
+			// it wins over the sizes above.
+			if (AscCommon.AscBrowser.isSafariMobile)
+				_style += "font-size:16px;";
 		}
 		else
 		{
